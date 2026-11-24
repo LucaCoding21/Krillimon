@@ -40,6 +40,30 @@ function tone(freq: number, dur: number, opts: { type?: OscillatorType; vol?: nu
   osc.stop(t + dur + 0.02);
 }
 
+// Filtered white noise, for whooshes.
+function noise(dur: number, opts: { from?: number; to?: number; vol?: number; at?: number } = {}) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + (opts.at ?? 0);
+  const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * dur), ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const filter = ac.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.Q.value = 1.4;
+  filter.frequency.setValueAtTime(opts.from ?? 500, t);
+  filter.frequency.exponentialRampToValueAtTime(opts.to ?? 2500, t + dur);
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(opts.vol ?? 0.08, t + dur * 0.35);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(filter).connect(gain).connect(ac.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
 const notes = (seq: number[], step = 0.08, opts: { type?: OscillatorType; vol?: number } = {}) =>
   seq.forEach((f, i) => tone(f, step * 1.4, { ...opts, at: i * step }));
 
@@ -62,5 +86,11 @@ export const sfx = {
   },
   step: () => tone(150 + Math.random() * 40, 0.045, { type: "triangle", vol: 0.035 }),
   biome: () => { notes([784, 988, 1175, 1568], 0.09, { vol: 0.045 }); notes([392, 494, 587, 784], 0.09, { type: "triangle", vol: 0.03 }); },
+  throw: () => noise(0.55, { from: 400, to: 2600, vol: 0.09 }),
+  pop: () => { tone(420, 0.09, { slide: 1500, vol: 0.05 }); noise(0.18, { from: 3000, to: 6000, vol: 0.05, at: 0.02 }); },
+  wiggle: () => { tone(260, 0.05, { vol: 0.045 }); tone(200, 0.06, { vol: 0.04, at: 0.07 }); },
+  click: () => { tone(1500, 0.035, { vol: 0.05 }); tone(900, 0.05, { vol: 0.04, at: 0.04 }); },
+  sendout: () => { tone(380, 0.08, { slide: 1200, vol: 0.04 }); notes([660, 990], 0.06, { vol: 0.035 }); },
+  reveal: () => { noise(0.25, { from: 1200, to: 300, vol: 0.06 }); notes([523, 784], 0.07, { vol: 0.04 }); },
   fanfare: () => notes([523, 523, 523, 659, 784, 659, 784, 1047], 0.1, { vol: 0.045 }),
 };

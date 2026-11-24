@@ -195,6 +195,67 @@ img.sprite, canvas.sprite, svg.px { image-rendering: pixelated; shape-rendering:
 }
 .firefly { width: 5px; height: 5px; background: #fff3a0; box-shadow: 0 0 8px 3px rgba(255, 236, 140, .7); animation: firefly 4s ease-in-out infinite; }
 
+/* ── Battle: throw, absorb, drop, wobble, burst, send-out ─────────────── */
+@keyframes throw-x { to { transform: translateX(var(--dx)); } }
+@keyframes throw-y {
+  0% { transform: translateY(0); animation-timing-function: cubic-bezier(.25, .65, .45, 1); }
+  50% { transform: translateY(var(--peak)); animation-timing-function: cubic-bezier(.55, 0, .75, .4); }
+  100% { transform: translateY(var(--dy)); }
+}
+@keyframes spin { to { transform: rotate(900deg); } }
+.throw-x { animation: throw-x .7s linear forwards; }
+.throw-y { animation: throw-y .7s forwards; }
+.spin { animation: spin .7s linear forwards; }
+
+@keyframes ball-open {
+  0% { transform: scale(1) rotate(0); }
+  35% { transform: scale(1.4) rotate(-12deg); filter: brightness(2.6); }
+  100% { transform: scale(1) rotate(0); filter: brightness(1); }
+}
+.ball-open { animation: ball-open .45s ease-out both; }
+
+@keyframes absorb {
+  0% { transform: scale(1); filter: brightness(1); }
+  30% { transform: scale(1.06); filter: brightness(5) saturate(0); }
+  100% { transform: scale(0) translateY(-40%); filter: brightness(9) saturate(0); opacity: .3; }
+}
+.absorb { animation: absorb .45s ease-in forwards; transform-origin: 50% 60%; }
+
+@keyframes ball-drop {
+  0% { transform: translateY(var(--drop)); animation-timing-function: ease-in; }
+  62% { transform: translateY(0); animation-timing-function: ease-out; }
+  78% { transform: translateY(-16px); animation-timing-function: ease-in; }
+  100% { transform: translateY(0); }
+}
+.ball-drop { animation: ball-drop .45s both; }
+
+@keyframes wiggle {
+  0%, 62%, 100% { transform: rotate(0); }
+  14% { transform: rotate(-26deg); }
+  34% { transform: rotate(22deg); }
+  50% { transform: rotate(-8deg); }
+}
+.wiggle { transform-origin: 50% 88%; animation: wiggle .7s ease-in-out both; }
+
+@keyframes burst {
+  from { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  to { transform: translate(calc(-50% + var(--bx)), calc(-50% + var(--by))) scale(.3); opacity: 0; }
+}
+.burst { animation: burst .75s ease-out forwards; }
+
+@keyframes sendout {
+  0% { transform: scale(.08); filter: brightness(9); opacity: 0; }
+  45% { transform: scale(1.08); filter: brightness(3); opacity: 1; }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+.sendout { animation: sendout .55s cubic-bezier(.2, .9, .3, 1.2) both; transform-origin: 50% 100%; }
+
+@keyframes flash-ring { from { transform: translate(-50%, -50%) scale(.15); opacity: .9; } to { transform: translate(-50%, -50%) scale(2.4); opacity: 0; } }
+.flash-ring { animation: flash-ring .55s ease-out forwards; }
+
+@keyframes ball-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.ball-bob { animation: ball-bob 1s ease-in-out infinite; }
+
 /* Screen wipe: stripes close in from alternating sides, then open again */
 .wipe { position: fixed; inset: 0; z-index: 100; pointer-events: none; display: flex; flex-direction: column; }
 .wipe > div { flex: 1; background: var(--navy); transform: scaleX(0); }

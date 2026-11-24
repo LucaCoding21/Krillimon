@@ -43,3 +43,4 @@ next-env.d.ts
 
 # Pokémon CSV download cache
 /scripts/.cache
+.env*.local

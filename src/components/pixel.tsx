@@ -2,6 +2,7 @@
 // in the palette; "." is transparent.
 import type { CSSProperties } from "react";
 import { TIERS, type TierId } from "@/lib/game";
+import { BALL_FOR_TIER, BallIcon } from "./sprites";
 
 type Art = { grid: string[]; palette: Record<string, string> };
 
@@ -32,37 +33,6 @@ export function PixelArt({ art, scale = 4, className, style, title }: {
 }
 
 const K = "#1d2236";
-
-export const TUFT: Art = {
-  palette: { d: "#1f6b33", m: "#3a9e48", l: "#7fd46f", k: "#174f27" },
-  grid: [
-    "....d.......d.......",
-    "...dl......dl....d..",
-    "...dm.....dlm...dl..",
-    "..dlm..d..dmm...dm..",
-    "..dmm.dl.dlmm..dlmd.",
-    "d.dmm.dm.dmmm..dmmd.",
-    "dldmmddm.dmmmd.dmmmd",
-    "dmdmmdlmddmmmdldmmmd",
-    "dmmmmdmmmdmmmmmmmlmd",
-    "dmmlmmmmmmmmlmmmmmmd",
-    "kdmmmmmmmmmmmmmmmmdk",
-    ".kkkkkkkkkkkkkkkkkk.",
-  ],
-};
-
-export const CLOUD: Art = {
-  palette: { w: "#ffffff", s: "#d6eefb" },
-  grid: [
-    ".....wwwww........",
-    "...wwwwwwwww..ww..",
-    "..wwwwwwwwwwwwwww.",
-    ".wwwwwwwwwwwwwwwww",
-    "wwwwwwwwwwwwwwwwww",
-    "swwwwwwwwwwwwwwwws",
-    ".ssssssssssssssss.",
-  ],
-};
 
 export const PUFF: Art = {
   palette: { l: "#f1f5f9", g: "#b6c2d4" },
@@ -184,8 +154,8 @@ export const TIER_GRADIENT: Record<TierId, string> = {
 export function TierChip({ tier, points = true }: { tier: TierId; points?: boolean }) {
   const t = TIERS[tier];
   return (
-    <span className="chip h-7 gap-1.5 pl-1.5 pr-3 text-[13px]" style={{ background: TIER_GRADIENT[tier], color: tier === "shiny" ? "#3a2400" : "#fff" }}>
-      <TierIcon tier={tier} scale={2} />
+    <span className="chip h-8 gap-1.5 pl-1 pr-3 text-[13px]" style={{ background: TIER_GRADIENT[tier], color: tier === "shiny" ? "#3a2400" : "#fff" }}>
+      {tier === "miss" ? <TierIcon tier="miss" scale={2} /> : <BallIcon ball={BALL_FOR_TIER[tier]} size={26} />}
       {t.name}{points && <span className="opacity-80">· {t.score}</span>}
     </span>
   );
