@@ -377,9 +377,6 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
         {feedback && t && !joined && (feedback.pokemon
           ? <NamePlate label={`${t.name} · +${feedback.score}`} color={t.color} name={feedback.pokemon.name} types={feedback.pokemon.types} />
           : <NamePlate label="Got away" color="#a7afd1" name={feedback.gaveUp ? "Skipped" : "Too slow!"} />)}
-        {!feedback && phase !== "answering" && (
-          <span className="chip h-9 bg-navy/85 px-4 text-[15px]">🌿 Something&apos;s rustling ahead…</span>
-        )}
       </div>
 
       {/* distance gained floats up from the party */}

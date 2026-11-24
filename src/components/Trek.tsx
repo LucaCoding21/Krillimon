@@ -33,13 +33,6 @@ const SCENERY: Prop[] = (() => {
   }
   return out.sort((a, b) => b.depth - a.depth); // far first
 })();
-const CALLOUTS = BIOMES.flatMap((b, i) => {
-  const len = (BIOMES[i + 1]?.from ?? MAX_METERS) - b.from;
-  return [
-    { x: (b.from + len * 0.32) * PX_PER_M, text: b.flavor[0], top: i % 2 ? 0.2 : 0.3 },
-    { x: (b.from + len * 0.68) * PX_PER_M, text: b.flavor[1], top: i % 2 ? 0.32 : 0.18 },
-  ];
-});
 const STARS = (() => {
   const rng = rngFrom("stars");
   return Array.from({ length: 70 }, () => ({ x: rng(), y: rng(), s: rng() < 0.2 ? 3 : 2, d: rng() * 3 }));
@@ -228,13 +221,6 @@ export function Trek({
         );
       })}
 
-      {/* flavour notes drifting by */}
-      {markers && CALLOUTS.filter((c) => inView(c.x, 260)).map((c) => (
-        <span key={c.x} className="absolute z-10 whitespace-nowrap rounded-full bg-navy/60 px-3 py-1 text-[13px] font-extrabold text-white/90"
-          style={{ left: (c.x - cam) * 0.85 + leaderX, bottom: groundTop + skyH * c.top }}>
-          {c.text}
-        </span>
-      ))}
 
       {/* scenery on the field, far to near */}
       {SCENERY.filter((s) => inView(s.x)).map((s) => s.kind === "grass" ? (
