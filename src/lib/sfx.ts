@@ -93,4 +93,26 @@ export const sfx = {
   sendout: () => { tone(380, 0.08, { slide: 1200, vol: 0.04 }); notes([660, 990], 0.06, { vol: 0.035 }); },
   reveal: () => { noise(0.25, { from: 1200, to: 300, vol: 0.06 }); notes([523, 784], 0.07, { vol: 0.04 }); },
   fanfare: () => notes([523, 523, 523, 659, 784, 659, 784, 1047], 0.1, { vol: 0.045 }),
+  // You hit Enter: the grass bursts before the server has even answered.
+  burst: () => { noise(0.16, { from: 700, to: 2600, vol: 0.06 }); tone(170, 0.12, { type: "triangle", vol: 0.05, slide: 95 }); },
+  // The ball drops through the floor.
+  hole: () => { noise(0.3, { from: 900, to: 160, vol: 0.07 }); tone(240, 0.22, { type: "triangle", vol: 0.05, slide: 70 }); },
+  recall: () => tone(980, 0.26, { type: "triangle", vol: 0.03, slide: 300 }),
+  // Smashing through a ledge: each one rings a step higher.
+  crack: (i: number) => {
+    const f = [523, 659, 784, 988, 1175, 1397][Math.min(i, 5)];
+    noise(0.14, { from: 2600, to: 500, vol: 0.09 });
+    tone(f, 0.13, { vol: 0.05 });
+    tone(f * 2, 0.09, { type: "triangle", vol: 0.03, at: 0.03 });
+  },
+  // Landing: a thud, then a jingle that grows with the tier.
+  land: (tier: TierId) => {
+    const big = tier === "rare" || tier === "ultra" || tier === "shiny";
+    tone(big ? 90 : 120, big ? 0.32 : 0.18, { type: "triangle", vol: big ? 0.11 : 0.07, slide: big ? 40 : 60 });
+    noise(big ? 0.35 : 0.18, { from: 500, to: 90, vol: big ? 0.1 : 0.06 });
+    if (tier === "common") { tone(330, 0.14, { type: "triangle", vol: 0.035, at: 0.1 }); return; }
+    if (tier === "meme") { tone(260, 0.22, { slide: 620, vol: 0.04, at: 0.08 }); tone(620, 0.2, { slide: 300, vol: 0.035, at: 0.3 }); return; }
+    setTimeout(() => sfx.catch(tier), 90);
+  },
+  sparkle: () => notes([2637, 3136, 3520, 4186, 3520, 4186], 0.055, { type: "triangle", vol: 0.03 }),
 };

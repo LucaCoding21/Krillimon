@@ -73,7 +73,7 @@ export const BALLS: Record<BallId, { name: string; a: string }> = {
   "master-ball": { name: "Master Ball", a: "a" },
 };
 
-// The rarer your answer, the fancier the ball you get to throw.
+// The rarer your answer, the fancier the ball it lands in.
 export const BALL_FOR_TIER: Record<TierId, BallId> = {
   common: "poke-ball",
   meme: "premier-ball",
@@ -83,12 +83,6 @@ export const BALL_FOR_TIER: Record<TierId, BallId> = {
   shiny: "master-ball",
   miss: "poke-ball",
 };
-
-// How many times the ball wobbles before it clicks shut: more suspense for rarer catches.
-export const SHAKES_FOR_TIER: Record<TierId, number> = { common: 1, meme: 1, uncommon: 2, rare: 3, ultra: 3, shiny: 3, miss: 0 };
-
-// How full the rarity meter gets (out of 5).
-export const RARITY_LEVEL: Record<TierId, number> = { common: 1, meme: 1, uncommon: 2, rare: 3, ultra: 4, shiny: 5, miss: 0 };
 
 export const ballUrl = (ball: BallId) => `${PA}/items/${ball}.png`;
 

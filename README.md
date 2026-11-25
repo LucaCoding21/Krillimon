@@ -1,8 +1,8 @@
 # Tall Grass 🌿
 
-Daily Pokémon rarity trivia in a battle format. Something rustles in the tall grass,
-you get a prompt and 25 seconds, and any Pokémon that fits pops out. The fewer people
-who'd think of it, the rarer the ball you throw and the more it's worth.
+Daily Pokémon rarity trivia. Something rustles in the tall grass, you get a prompt and
+25 seconds, and any Pokémon that fits pops out. Catch it and it drops down a shaft into
+the earth: the fewer people who'd think of it, the deeper it digs.
 
 Next.js 16 (App Router) + Supabase Postgres. Pokémon data from [PokéAPI](https://pokeapi.co).
 
@@ -27,38 +27,58 @@ First-time database setup:
 
 ## Scoring
 
-| Tier | Ball | Points | Wobbles | Rule |
+Every point is 10 m of depth, and depth is what the game shows.
+
+| Tier | Ball | Points | Depth | Rule |
 |---|---|---|---|---|
-| Common | Poké Ball | 10 | 1 | Most familiar 15% of valid answers |
-| Meme Pick | Premier Ball | 15 | 1 | Famous "obscure" picks (Bidoof, Shuckle, …), capped |
-| Uncommon | Great Ball | 30 | 2 | Next 25% |
-| Rare | Ultra Ball | 60 | 3 | Next 30% |
-| Ultra Rare | Luxury Ball | 85 | 3 | Least familiar 30% |
-| Shiny | Master Ball | 100 | 3 | One hidden gem per prompt; appears in its shiny colors |
+| Common | Poké Ball | 10 | +100 m | Most familiar 15% of valid answers |
+| Meme Pick | Premier Ball | 15 | +150 m | Famous "obscure" picks (Bidoof, Shuckle, …), capped |
+| Uncommon | Great Ball | 30 | +300 m | Next 25% |
+| Rare | Ultra Ball | 60 | +600 m | Next 30% |
+| Ultra Rare | Luxury Ball | 85 | +850 m | Least familiar 30% |
+| Shiny | Master Ball | 100 | +1,000 m | One hidden gem per prompt; revealed in its shiny colours at the bottom |
 | Got Away | none | 0 | none | Wrong, skipped or out of time |
 
-Max 600. Titles: Youngster (0), Ace Trainer (120), Gym Leader (220), Elite Four (320), Champion (420).
+Max 600 points (6,000 m). Titles: Youngster (0), Ace Trainer (120), Gym Leader (220), Elite Four (320), Champion (420).
 
 Rarity comes from one **familiarity** number per Pokémon (1–100) in
 `scripts/familiarity.mjs`: hand-set for well-known Pokémon, a per-generation default
 for the rest. Edit it, then `npm run data && npm run seed`. New puzzles pick up the
 change; puzzles already played keep their frozen tiers.
 
-## The battle (the payoff)
+## The dig (the payoff)
 
-Each round is an encounter (`src/components/Arena.tsx`): your partner stands on the near
-pad (an animated back sprite), and tall grass rustles on the far pad. Answer, and the catch
-plays out in beats: **reveal** (the Pokémon bursts out, the wild card fills its rarity meter) →
-**throw** (the tier's ball arcs and spins) → **absorb** (flash, the Pokémon shrinks in) →
-**shake** (the ball drops and wobbles) → **caught** (click, star burst). Your catch is your
-partner next round, and the results screen sends your whole team out one ball at a time.
+The answer box is live the moment the prompt appears (no read-ahead lock), and Enter gets
+an instant response (the grass bursts) while the server checks the answer.
 
-Depth = score × 10 m. The arena moves through nine biomes as you score, and the time of
-day moves with it: morning in Sunny Meadow, sunset on Ember Peak, midnight in Phantom
-Ruins, dawn at the Sky Sanctuary. The depth gauge on the right tracks it, and a "Now
-entering…" banner marks each new biome. World art is procedural pixel art in
-`src/components/art.ts` (original shapes + per-biome palettes); `Backdrop.tsx` renders it.
-Preview every biome's arena at `/dev/biomes` while running `npm run dev`.
+Each round is an encounter on a floor somewhere down the shaft (`src/components/Scene.tsx`):
+your partner on the near pad, the grass rustling on the far pad (it twitches as you type and
+shakes when time is short). Answer, and:
+
+1. **Catch** (~1 s): the Pokémon pops out and one plain Poké Ball catches it. Nothing on
+   screen gives away the tier, and a shiny still looks normal.
+2. **Fall** (the reveal): the floor opens and the ball drops down the shaft. Below you are
+   six ledges, one per tier (Common at +100 m … Shiny at +1,000 m). The ball smashes through
+   every ledge your answer beats, with a rising note, a shake and an upgrade to the next ball
+   at each one. It lands on the ledge of its tier. A Common drops one short ledge and lands with a dull
+   thud; a Shiny breaks five ledges and lands as a Master Ball with a gold flash.
+3. **Land**: a new floor forms, the ball opens, and your catch is your partner from then on.
+
+The camera chases the ball through nine layers of rock, which get darker and stranger:
+Tall Grass, Root Tunnels, Mossy Grotto, Crystal Cavern, Echo Caverns, Magma Chamber, Fossil
+Layer, Ancient Ruins and The Rift. A banner marks each new layer. The world is a vertical
+cross-section (`World.tsx`) moved by a camera every frame without re-rendering. All the art
+is procedural pixel art in `art.ts`: original shapes recoloured per layer.
+
+Preview every layer and fire test falls for any tier at `/dev/biomes` while running
+`npm run dev`.
+
+Each floor is a **stadium**: a battle background from Pokémon Showdown (`public/stadium/`,
+self-hosted), picked per layer and colour-graded darker the deeper it is (`STRATA` in `art.ts`).
+Falling takes the camera out of one stadium, down the rock shaft past the ledges, and the ball
+crashes into the next one. The grass on the far pad is a patch of separate clumps that sway,
+ripple, shed leaves and hide a pair of blinking eyes; it twitches as you type, thrashes when
+time is short and bursts apart when you answer.
 
 Pokémon sprites are the [Pokémon Showdown](https://play.pokemonshowdown.com/sprites/) /
 Smogon Sprite Project animated sprites, loaded from [PokéAPI's sprite mirror](https://github.com/PokeAPI/sprites)

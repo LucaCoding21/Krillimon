@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
-import { ROUND_MS, TIERS, type TierId } from "@/lib/game";
-import type { GuessResult, PokeRef, ResultsPayload, RunState } from "@/lib/api-types";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
+import { METERS_PER_POINT, ROUND_MS, TIERS, formatMeters, metersFor, type TierId } from "@/lib/game";
+import type { PokeRef, GuessResult, ResultsPayload, RunState } from "@/lib/api-types";
 import { isMuted, setMuted, sfx, subscribeMuted } from "@/lib/sfx";
-import { TIER_GRADIENT, TierChip, TierIcon, TimerBar, PixelArt } from "./pixel";
-import { Arena, type Mon, type Stage } from "./Arena";
-import { Backdrop, DepthGauge, JourneyMap, biomeAt, biomeIndexAt } from "./Backdrop";
+import { TIER_GRADIENT, TierIcon, TimerBar, PixelArt } from "./pixel";
+import { Scene, type Mon, type Outcome, type SceneHandle } from "./Scene";
+import { JourneyMap, StadiumBg, stratumAt, stratumIndexAt } from "./World";
 import { padArt } from "./art";
-import { BALLS, BALL_FOR_TIER, BallIcon, SHAKES_FOR_TIER, Sprite } from "./sprites";
-import { Typewriter } from "./Typewriter";
+import { BALLS, BALL_FOR_TIER, BallIcon, Sprite } from "./sprites";
 
 type Screen =
   | { name: "title" }
@@ -28,7 +27,9 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const subscribeResize = (cb: () => void) => { window.addEventListener("resize", cb); return () => window.removeEventListener("resize", cb); };
 const useWidth = () => useSyncExternalStore(subscribeResize, () => window.innerWidth, () => 1280);
+const useHeight = () => useSyncExternalStore(subscribeResize, () => window.innerHeight, () => 800);
 const TIER_ORDER: TierId[] = ["shiny", "ultra", "rare", "uncommon", "meme", "common", "miss"];
+const tierMeters = (t: TierId) => TIERS[t].score * METERS_PER_POINT;
 
 // Every run starts with a partner, picked from the run id.
 const BUDDIES: Mon[] = [
@@ -75,17 +76,17 @@ export default function Game() {
     <div className="relative min-h-screen">
       {onTitle && (
         <>
-          <div className="fixed inset-0"><Arena meters={0} partner={PIKACHU} partnerKey="title" stage="rustle" layout="title" showCards={false} /></div>
+          <div className="fixed inset-0"><Scene floor={0} partner={PIKACHU} outcome={null} roundKey="title" layout="title" /></div>
           <div className="pointer-events-none fixed inset-0 bg-gradient-to-r from-navy/75 via-navy/15 to-transparent" />
         </>
       )}
 
-      <header className="fixed inset-x-0 top-0 z-30 flex items-center justify-between gap-2 p-3 sm:p-4">
-        <button className="pill" onClick={() => { if (!onTitle) { sfx.select(); void go({ name: "title" }); } }}>
+      <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-center justify-between gap-2 p-3 sm:p-4">
+        <button className="pill pointer-events-auto" onClick={() => { if (!onTitle) { sfx.select(); void go({ name: "title" }); } }}>
           <span className="pill-icon"><BallIcon ball="poke-ball" size={26} /></span>Tall Grass
         </button>
-        <button className="pill" onClick={() => { setMuted(!muted); if (muted) sfx.select(); }} aria-label="Toggle sound">
-          <span className="pill-icon text-sm">{muted ? "🔇" : "🔊"}</span>{muted ? "Sound off" : "Sound on"}
+        <button className="pill pointer-events-auto" onClick={() => { setMuted(!muted); if (muted) sfx.select(); }} aria-label="Toggle sound">
+          <span className="pill-icon text-sm">{muted ? "🔇" : "🔊"}</span><span className="hidden sm:inline">{muted ? "Sound off" : "Sound on"}</span>
         </button>
       </header>
 
@@ -138,7 +139,7 @@ function Title({ onStart }: { onStart: (mode: "daily" | "practice") => Promise<v
             <span className="text-white">Tall</span><span className="text-gold">Grass</span>
           </h1>
           <p className="mt-3 max-w-sm text-lg font-extrabold text-white [text-shadow:0_2px_0_rgba(20,26,51,.8)]">
-            Something&apos;s in the grass. Name the Pokémon nobody else thinks of, and earn a rarer ball to catch it.
+            Something&apos;s in the grass. Name the Pokémon nobody else thinks of, and dig deeper than anyone.
           </p>
         </div>
 
@@ -165,14 +166,14 @@ function Title({ onStart }: { onStart: (mode: "daily" | "practice") => Promise<v
             <span className="tile-icon !h-11 !w-11"><BallIcon ball="master-ball" size={34} /></span>
             <span>
               <span className="block font-display text-xl font-black leading-tight">How to play</span>
-              <span className="block text-[13px] font-bold opacity-90">Balls &amp; rarity</span>
+              <span className="block text-[13px] font-bold opacity-90">Balls &amp; depth</span>
             </span>
           </button>
         </div>
         {error && <p className="panel px-4 py-3 font-bold text-coral">{error}</p>}
 
         <p className="text-xs font-bold text-white/75 [text-shadow:0_1px_0_rgba(0,0,0,.6)]">
-          Press <span className="keycap !h-5 !min-w-0 !text-[10px]">Enter</span> to play · Fan-made · Data: PokéAPI · Sprites: Pokémon Showdown / Smogon Sprite Project · Not affiliated with Nintendo / Game Freak
+          Press <span className="keycap !h-5 !min-w-0 !text-[10px]">Enter</span> to play · Fan-made · Data: PokéAPI · Sprites &amp; battle backgrounds: Pokémon Showdown / Smogon Sprite Project · Not affiliated with Nintendo / Game Freak
         </p>
       </div>
 
@@ -187,8 +188,9 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       <div className="panel rise max-h-[92vh] w-full max-w-lg overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-display text-2xl font-black">How to play</h2>
         <p className="mt-2 font-semibold text-muted">
-          Each round, something rustles in the tall grass and you get a prompt and 25 seconds. Name any Pokémon that fits and it pops out.
-          The fewer trainers who&apos;d think of it, the better the ball you throw and the more points you score.
+          Something rustles in the grass and you get a prompt and 25 seconds. Name any Pokémon that fits and it pops out.
+          Catch it and it drops down the shaft, smashing through one ledge for every tier it beats.
+          The fewer trainers who&apos;d think of it, the deeper it digs, and the better the ball it lands in.
         </p>
         <ul className="mt-4 space-y-2">
           {(["common", "meme", "uncommon", "rare", "ultra", "shiny"] as TierId[]).map((t) => (
@@ -198,11 +200,11 @@ function RulesModal({ onClose }: { onClose: () => void }) {
                 <span className="block font-display font-black" style={{ color: TIERS[t].color }}>{TIERS[t].name} <span className="font-body text-sm text-muted">· {BALLS[BALL_FOR_TIER[t]].name}</span></span>
                 <span className="block text-sm font-semibold text-muted">{TIERS[t].blurb}</span>
               </span>
-              <span className="font-display text-xl font-black">{TIERS[t].score}</span>
+              <span className="whitespace-nowrap font-display text-lg font-black">+{tierMeters(t).toLocaleString()} m</span>
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-sm font-semibold text-muted">The Shiny is today&apos;s hidden gem for each prompt: it shows up in its shiny colors and earns the Master Ball.</p>
+        <p className="mt-3 text-sm font-semibold text-muted">Each prompt hides one Shiny, today&apos;s hidden gem. You won&apos;t know you found it until it hits the bottom.</p>
         <button onClick={onClose} className="tile t-slate stripes mt-5 w-full justify-center py-3 font-display text-lg font-black">Got it</button>
       </div>
     </div>
@@ -211,38 +213,40 @@ function RulesModal({ onClose }: { onClose: () => void }) {
 
 /* ═══════════════════════════ Play ═══════════════════════════ */
 
-type Feedback = { tier: TierId; score: number; pokemon: PokeRef | null; corrected: boolean; raw: string; gaveUp?: boolean };
-
-// When each beat of the catch starts (ms after the Pokémon pops out).
-const BEAT = { throw: 1100, absorb: 1800, shake: 2250, drop: 450, wobble: 700 };
+type Feedback =
+  | { kind: "catch"; tier: TierId; pokemon: PokeRef; corrected: boolean; raw: string }
+  | { kind: "miss"; raw: string; gaveUp?: boolean };
 
 function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: string) => void }) {
   const [state, setState] = useState(initial);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [nextState, setNextState] = useState<RunState | null>(null);
-  const [stage, setStage] = useState<Stage>("rustle");
+  const [settled, setSettled] = useState(false); // the catch has landed; the result panel is up
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [badKey, setBadKey] = useState(0);
+  const [typing, setTyping] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [offset, setOffset] = useState(() => initial.serverNow - Date.now()); // server clock minus ours
+  const [shownAt, setShownAt] = useState(() => Date.now()); // when this round's prompt appeared
+  const [stoppedAt, setStoppedAt] = useState<number | null>(null); // the clock freezes once you've answered
   const [skipping, setSkipping] = useState(false);
   const [inputEl, setInputEl] = useState<HTMLInputElement | null>(null);
   const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
-  const [panelH, setPanelH] = useState(290);
-  const fastForward = useRef(false);
+  const [panelH, setPanelH] = useState(250);
+  const startReq = useRef<Promise<unknown> | null>(null);
+  const sceneRef = useRef<SceneHandle>(null);
   const width = useWidth();
   const narrow = width < 640;
-  const wide = width >= 1100;
 
-  // The arena sits above the docked panel, so track its height.
+  // The scene sits above the docked answer panel, so track its height (while it shows the form).
   useLayoutEffect(() => {
-    if (!panelEl) return;
+    if (!panelEl || feedback) return;
     const ro = new ResizeObserver(() => setPanelH(panelEl.offsetHeight));
     ro.observe(panelEl);
     return () => ro.disconnect();
-  }, [panelEl]);
+  }, [panelEl, feedback]);
 
   const adopt = (s: RunState) => { setOffset(s.serverNow - Date.now()); setState(s); };
 
@@ -251,60 +255,31 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
     return () => clearInterval(t);
   }, []);
 
-  // Start the clock for a round that hasn't started yet.
+  // Start the round's clock on the server. You can already type: a guess waits for this.
   useEffect(() => {
     if (feedback || state.completed || state.answeringOpensAt) return;
     let cancelled = false;
-    api<RunState>("/api/round", { runId: state.runId, action: "start" })
-      .then((s) => { if (!cancelled) { adopt(s); sfx.rustle(); } })
-      .catch((e) => setError(e.message));
+    startReq.current = api<RunState>("/api/round", { runId: state.runId, action: "start" })
+      .then((s) => { if (!cancelled) adopt(s); })
+      .catch((e) => { if (!cancelled) setError(e.message); });
+    sfx.rustle();
     return () => { cancelled = true; };
   }, [state.runId, state.round, state.answeringOpensAt, state.completed, feedback]);
 
-  // Your partner is sent out at the start of every round.
-  useEffect(() => { sfx.sendout(); }, [state.round]);
-
-  const serverNow = now + offset;
-  const phase = !state.answeringOpensAt ? "loading"
-    : serverNow < state.answeringOpensAt ? "ready"
-    : serverNow < (state.deadline ?? 0) ? "answering" : "timeup";
-  const remaining = Math.max(0, (state.deadline ?? 0) - serverNow);
+  const serverNow = (stoppedAt ?? now) + offset;
+  const deadline = state.deadline ?? shownAt + offset + ROUND_MS;
+  const phase = feedback ? "result" : serverNow < deadline ? "answering" : "timeup";
+  const remaining = Math.max(0, deadline - serverNow);
   const secondsLeft = Math.ceil(remaining / 1000);
+  const urgent = phase === "answering" && remaining < 5_000;
 
   useEffect(() => { if (phase === "answering") inputEl?.focus(); }, [phase, inputEl]);
   useEffect(() => { if (phase === "answering" && secondsLeft <= 5 && secondsLeft > 0) sfx.tick(); }, [phase, secondsLeft]);
 
-  function showFeedback(fb: Feedback, s: RunState) {
-    fastForward.current = false;
-    setFeedback(fb); setNextState(s); setAnswer(""); setError(null);
-    if (fb.pokemon) { setStage("reveal"); sfx.reveal(); }
-    else { setStage("fled"); sfx.miss(); }
-  }
-
-  // The catch: throw → absorb → shake (a wobble per beat) → caught.
-  useEffect(() => {
-    if (!feedback?.pokemon) return;
-    const tier = feedback.tier;
-    const wobbles = SHAKES_FOR_TIER[tier];
-    const caughtAt = BEAT.shake + BEAT.drop + wobbles * BEAT.wobble + 150;
-    const at = (ms: number, fn: () => void) => setTimeout(() => { if (!fastForward.current) fn(); }, ms);
-    const timers = [
-      at(BEAT.throw, () => { setStage("throw"); sfx.throw(); }),
-      at(BEAT.absorb, () => { setStage("absorb"); sfx.pop(); }),
-      at(BEAT.shake, () => setStage("shake")),
-      ...Array.from({ length: wobbles }, (_, i) => at(BEAT.shake + BEAT.drop + i * BEAT.wobble + 60, () => sfx.wiggle())),
-      at(caughtAt, () => { setStage("caught"); sfx.click(); sfx.catch(tier); }),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, [feedback]);
-
-  const done = !!feedback && (stage === "caught" || stage === "fled");
-
-  // Enter (or a click on the panel) skips straight to the catch.
-  function skipAhead() {
-    if (!feedback || done) return;
-    fastForward.current = true;
-    if (feedback.pokemon) { setStage("caught"); sfx.click(); sfx.catch(feedback.tier); }
+  // `s` has just arrived, so its server time is fresh: sync the clock offset now (not later, when it's stale).
+  function show(fb: Feedback, s: RunState) {
+    setOffset(s.serverNow - Date.now());
+    setFeedback(fb); setNextState(s); setSettled(false); setError(null); setStoppedAt(Date.now());
   }
 
   // Out of time: the round is a miss (unless a last-second guess is still in flight).
@@ -314,27 +289,32 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSkipping(true);
     api<RunState>("/api/round", { runId: state.runId, action: "skip" })
-      .then((s) => { if (!cancelled) showFeedback({ tier: "miss", score: 0, pokemon: null, corrected: false, raw: "" }, s); })
+      .then((s) => { if (!cancelled) show({ kind: "miss", raw: answer.trim() }, s); })
       .catch((e) => setError(e.message))
       .finally(() => setSkipping(false));
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, feedback, busy]);
 
+  const inFlight = feedback?.kind === "catch" && !settled;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (inFlight) { sceneRef.current?.skip(); return; }
     if (busy || phase !== "answering" || !answer.trim()) return;
     setBusy(true); setError(null);
+    sfx.burst();
     const typed = answer;
     try {
+      await startReq.current;
       const r = await api<GuessResult>("/api/guess", { runId: state.runId, answer: typed });
       if (r.status === "rejected") {
         setError(r.reason); setBadKey((k) => k + 1); sfx.wrong();
         requestAnimationFrame(() => inputEl?.select());
       } else if (r.status === "accepted") {
-        showFeedback({ tier: r.tier, score: r.score, pokemon: r.pokemon, corrected: r.corrected, raw: typed }, r.state);
+        show({ kind: "catch", tier: r.tier, pokemon: r.pokemon, corrected: r.corrected, raw: typed }, r.state);
       } else {
-        showFeedback({ tier: "miss", score: 0, pokemon: null, corrected: false, raw: typed }, r.state);
+        show({ kind: "miss", raw: typed }, r.state);
       }
     } catch (err) {
       setError((err as Error).message);
@@ -347,8 +327,9 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
     if (busy || feedback || phase !== "answering") return;
     setBusy(true);
     try {
+      await startReq.current;
       const s = await api<RunState>("/api/round", { runId: state.runId, action: "skip" });
-      showFeedback({ tier: "miss", score: 0, pokemon: null, corrected: false, raw: "", gaveUp: true }, s);
+      show({ kind: "miss", raw: "", gaveUp: true }, s);
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   }
@@ -357,128 +338,84 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
     if (!nextState) return;
     sfx.select();
     if (nextState.completed) { onFinished(nextState.runId); return; }
-    adopt(nextState); setFeedback(null); setNextState(null); setStage("rustle");
+    setState(nextState); setFeedback(null); setNextState(null); setSettled(false);
+    setAnswer(""); setError(null); setShownAt(Date.now()); setStoppedAt(null);
   }
 
-  // Score, depth and team update once the ball clicks shut.
-  const applied = done && nextState ? nextState : state;
-  const meters = applied.score * 10;
-  const lastCatch = [...state.results].reverse().find((r) => r.pokemon)?.pokemon;
-  const partner: Mon = lastCatch ? { id: lastCatch.id, name: lastCatch.name, types: lastCatch.types } : buddyFor(state.runId);
-  const tier = feedback?.tier ?? null;
-  const ball = BALL_FOR_TIER[tier ?? "common"];
-  const arenaStage: Stage = feedback ? stage : phase === "answering" ? "waiting" : "rustle";
-  const hudTop = narrow ? 104 : 112;
-  const t = tier ? TIERS[tier] : null;
+  const onSettled = useCallback(() => setSettled(true), []);
+  const outcome = useMemo<Outcome | null>(() => {
+    if (!feedback || !nextState) return null;
+    if (feedback.kind === "miss") return { kind: "miss" };
+    const p = feedback.pokemon;
+    return { kind: "catch", tier: feedback.tier, mon: { id: p.id, name: p.name, types: p.types }, target: metersFor(nextState.score) };
+  }, [feedback, nextState]);
+  const lastCatch = useMemo(() => [...state.results].reverse().find((r) => r.pokemon), [state.results]);
+  const partner = useMemo<Mon>(() => (lastCatch?.pokemon
+    ? { id: lastCatch.pokemon.id, name: lastCatch.pokemon.name, types: lastCatch.pokemon.types, shiny: lastCatch.tier === "shiny" }
+    : buddyFor(state.runId)), [lastCatch, state.runId]);
 
-  const line = !feedback ? "" : !feedback.pokemon
-    ? (feedback.gaveUp ? "You let it slip away…" : feedback.raw ? `Too slow! “${feedback.raw}” didn't count.` : "It got away…")
-    : stage === "reveal" ? (tier === "shiny" ? `Whoa, a shiny ${feedback.pokemon.name}!` : `It's ${feedback.pokemon.name}!`)
-    : stage === "throw" || stage === "absorb" ? `You threw ${BALLS[ball].a} ${BALLS[ball].name}!`
-    : stage === "shake" ? ""
-    : `Caught! ${feedback.pokemon.name} joins your team.`;
+  // Ball slots fill in once the ball has landed.
+  const applied = settled && nextState ? nextState : state;
+  const hudTop = narrow ? 104 : 112;
+  const showResult = !!feedback && (settled || feedback.kind === "miss");
 
   return (
     <>
-      <div className="fixed inset-0">
-        <Arena
-          meters={meters} partner={partner} partnerKey={`${partner.id}-${state.round}`}
-          wild={feedback?.pokemon ? { id: feedback.pokemon.id, name: feedback.pokemon.name, types: feedback.pokemon.types } : null}
-          tier={tier} ball={ball} shakes={tier ? SHAKES_FOR_TIER[tier] : 1}
-          stage={arenaStage} roundKey={state.round} floor={panelH + 8} top={hudTop}
-        />
+      <div className="fixed inset-0" onClick={inFlight ? () => sceneRef.current?.skip() : undefined}>
+        <Scene ref={sceneRef} floor={metersFor(state.score)} partner={partner} outcome={outcome} roundKey={state.round}
+          pending={busy && !feedback} typing={typing} urgent={urgent}
+          bottom={panelH + 8} top={hudTop} hud onSettled={onSettled} />
       </div>
 
-      {/* HUD: round + the ball you used for each catch, and your score */}
-      <div className="pointer-events-none fixed inset-x-0 top-[60px] z-20 sm:top-[66px]">
-        <div className="mx-auto flex max-w-[1280px] items-start justify-between gap-2 px-3">
-          <div className="pill !h-11 !pl-4">
-            <span className="whitespace-nowrap font-display text-[15px] font-black"><span className="hidden sm:inline">Round </span>{Math.min(state.round + 1, state.rounds)}<span className="text-muted">/{state.rounds}</span></span>
-            <span className="ml-1 flex gap-1">
-              {Array.from({ length: state.rounds }, (_, i) => {
-                const r = applied.results.find((x) => x.round === i);
-                return (
-                  <span key={i} className={`grid h-6 w-6 place-items-center rounded-full sm:h-7 sm:w-7 ${r ? "bg-white/10" : i === state.round && !feedback ? "blink bg-gold/25 ring-2 ring-gold" : "bg-white/5 ring-1 ring-white/10"}`}>
-                    {r && (r.pokemon ? <BallIcon ball={BALL_FOR_TIER[r.tier]} size={narrow ? 22 : 26} className="pop-in" /> : <span className="pop-in"><TierIcon tier="miss" scale={2} /></span>)}
-                  </span>
-                );
-              })}
-            </span>
-          </div>
-          <div className="pill !h-11 !pl-3">
-            <span className="text-gold">★</span>
-            <span className="font-display text-lg font-black tabular-nums"><Counter value={applied.score} /></span>
-          </div>
+      {/* HUD: round and the ball each catch landed in */}
+      <div className="pointer-events-none fixed left-0 top-[60px] z-20 px-3 sm:top-[66px]">
+        <div className="pill !h-11 !pl-4">
+          <span className="whitespace-nowrap font-display text-[15px] font-black">
+            <span className="hidden sm:inline">Round </span>{Math.min(state.round + 1, state.rounds)}<span className="text-muted">/{state.rounds}</span>
+          </span>
+          <span className="ml-1 flex gap-1">
+            {Array.from({ length: state.rounds }, (_, i) => {
+              const r = applied.results.find((x) => x.round === i);
+              return (
+                <span key={i} className={`grid h-6 w-6 place-items-center rounded-full sm:h-7 sm:w-7 ${r ? "bg-white/10" : i === state.round && !feedback ? "blink bg-gold/25 ring-2 ring-gold" : "bg-white/5 ring-1 ring-white/10"}`}>
+                  {r && (r.pokemon ? <BallIcon ball={BALL_FOR_TIER[r.tier]} size={narrow ? 22 : 26} className="pop-in" /> : <span className="pop-in"><TierIcon tier="miss" scale={2} /></span>)}
+                </span>
+              );
+            })}
+          </span>
+          {state.mode === "practice" && <span className="ml-1 hidden rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-muted sm:inline">Practice</span>}
         </div>
       </div>
 
-      {/* how deep into the wild you are */}
-      {!narrow && (
-        <div className="pointer-events-none fixed right-4 z-20" style={{ top: hudTop + 16, bottom: panelH + 28 }}>
-          <DepthGauge meters={meters} labels={wide} />
-        </div>
-      )}
-
-      {/* the docked battle panel */}
-      <div ref={setPanelEl} className="fixed inset-x-0 bottom-0 z-20 px-3 pb-3 sm:pb-5">
+      {/* the docked panel: the prompt while you answer, then the result (it ducks out of the way during the fall) */}
+      <div ref={setPanelEl} className={`fixed inset-x-0 bottom-0 z-20 px-3 pb-3 transition-transform duration-300 ease-out sm:pb-5 ${inFlight ? "translate-y-[115%]" : ""}`}>
         <div key={badKey} className={`panel mx-auto max-w-[720px] p-5 sm:p-6 ${badKey ? "shake" : ""}`}>
-          {feedback && t ? (
-            <div className="flex min-h-[176px] cursor-pointer flex-col" onClick={skipAhead}>
-              <p className="min-h-[1.4em] font-display text-[24px] font-black leading-snug sm:text-[28px]">
-                {stage === "shake"
-                  ? <span className="tracking-[0.3em]"><span className="blink">●</span> <span className="blink" style={{ animationDelay: ".2s" }}>●</span> <span className="blink" style={{ animationDelay: ".4s" }}>●</span></span>
-                  : <Typewriter key={`${state.round}-${stage}`} text={line} speed={22} />}
-              </p>
-              {done && (
-                <div className="rise mt-3 flex flex-wrap items-center gap-3">
-                  <TierChip tier={feedback.tier} points={false} />
-                  <span className="outlined text-[30px] leading-none text-gold">+{feedback.score}</span>
-                  {feedback.score > 0 && <span className="font-display text-lg font-black text-white/70">+{(feedback.score * 10).toLocaleString()} m deeper</span>}
-                  <span className="basis-full font-semibold text-muted">
-                    {t.blurb}{feedback.corrected && feedback.pokemon ? ` (read “${feedback.raw}” as ${feedback.pokemon.name})` : ""}
-                  </span>
-                </div>
-              )}
-              <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-                {!done ? <span className="text-sm font-bold text-muted/70">Click or press Enter to skip</span> : <span />}
-                {done ? (
-                  <button autoFocus onClick={(e) => { e.stopPropagation(); next(); }} className="tile t-green stripes rise px-6 py-3">
-                    <span className="font-display text-xl font-black">{nextState?.completed ? "See your team" : "Next encounter"}</span>
-                    <span className="keycap">Enter</span>
-                  </button>
-                ) : (
-                  <button autoFocus onClick={(e) => { e.stopPropagation(); skipAhead(); }} className="sr-only">Skip</button>
-                )}
-              </div>
-            </div>
+          {showResult && feedback ? (
+            <ResultView feedback={feedback} last={!!nextState?.completed} onNext={next} />
           ) : (
-            <form onSubmit={submit} className="flex min-h-[176px] flex-col">
-              <p className="text-[12px] font-black uppercase tracking-[0.2em] text-gold">Encounter {state.round + 1} · {state.label}</p>
-              <p className="mt-1 min-h-[2.6em] font-display text-[24px] font-black leading-snug sm:text-[28px]">
-                {state.prompt && <Typewriter key={`p-${state.round}`} text={state.prompt.text} speed={18} />}
-              </p>
+            <form onSubmit={submit} className="flex flex-col">
+              <p key={`p-${state.round}`} className="rise min-h-[1.3em] font-display text-[22px] font-black leading-snug sm:text-[28px]">{state.prompt?.text}</p>
               <div className="mt-3">
-                <TimerBar value={phase === "answering" ? remaining / ROUND_MS : phase === "timeup" ? 0 : 1}
-                  seconds={phase === "answering" ? secondsLeft : null} low={phase === "answering" && remaining < 5_000} />
+                <TimerBar value={remaining / ROUND_MS} seconds={secondsLeft} low={remaining < 5_000} />
               </div>
               <div className="mt-4 flex gap-2">
                 <input
                   ref={setInputEl}
                   value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  disabled={phase !== "answering"}
-                  placeholder={phase === "answering" ? "Name a Pokémon…" : "Something's rustling…"}
-                  autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={40}
-                  className="h-14 min-w-0 flex-1 rounded-2xl bg-white px-5 text-xl font-extrabold text-navy shadow-[inset_0_-3px_0_rgba(0,0,0,.12)] outline-none ring-4 ring-transparent transition placeholder:text-slate-400 focus:ring-gold/70 disabled:bg-white/50"
+                  onChange={(e) => { setAnswer(e.target.value); setTyping((t) => t + 1); if (error) setError(null); }}
+                  readOnly={phase !== "answering" || busy}
+                  placeholder="Name a Pokémon…"
+                  autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={40} enterKeyHint="send"
+                  className="h-14 min-w-0 flex-1 rounded-2xl bg-white px-5 text-xl font-extrabold text-navy shadow-[inset_0_-3px_0_rgba(0,0,0,.12)] outline-none ring-4 ring-transparent transition placeholder:text-slate-400 focus:ring-gold/70"
                 />
-                <button type="submit" disabled={busy || phase !== "answering" || !answer.trim()} className="tile t-coral stripes h-14 gap-2 px-4 py-0">
-                  <BallIcon ball="poke-ball" size={30} />
-                  <span className="font-display text-xl font-black">{busy ? "…" : "Throw!"}</span>
+                <button type="submit" disabled={phase !== "answering" || (!answer.trim() && !busy)} className="tile t-coral stripes h-14 gap-2 px-4 py-0">
+                  <BallIcon ball="poke-ball" size={30} className={busy ? "spinning" : ""} />
+                  <span className="hidden font-display text-xl font-black min-[400px]:inline">Throw!</span>
                 </button>
               </div>
-              <div className="mt-auto flex min-h-7 items-end justify-between gap-3 pt-2">
+              <div className="mt-2 flex min-h-7 items-end justify-between gap-3">
                 <p className="font-bold leading-tight text-coral">{error}</p>
-                {phase === "answering" && (
+                {phase === "answering" && !busy && (
                   <button type="button" onClick={giveUp} className="shrink-0 text-sm font-extrabold text-muted hover:text-white">Run away →</button>
                 )}
               </div>
@@ -490,8 +427,42 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
   );
 }
 
-// Score that counts up instead of jumping.
-function Counter({ value }: { value: number }) {
+function ResultView({ feedback, last, onNext }: { feedback: Feedback; last: boolean; onNext: () => void }) {
+  const caught = feedback.kind === "catch" ? feedback : null;
+  const tier: TierId = caught ? caught.tier : "miss";
+  const t = TIERS[tier];
+  const missLine = feedback.kind === "miss"
+    ? (feedback.gaveUp ? "You ran away." : feedback.raw ? `Too slow! “${feedback.raw}” didn't count.` : "It got away…")
+    : "";
+  return (
+    <div className="flex flex-col">
+      <div className="rise flex items-center gap-3 sm:gap-4">
+        <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-white/10 ring-2 ring-white/15">
+          {caught ? <BallIcon ball={BALL_FOR_TIER[tier]} size={54} className="pop-in" /> : <TierIcon tier="miss" scale={4} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-[22px] font-black leading-tight sm:text-[28px]">
+            {caught ? (tier === "shiny" ? `Shiny ${caught.pokemon.name}!` : caught.pokemon.name) : missLine}
+          </p>
+          <p className="text-[14px] font-bold leading-snug text-muted sm:text-[15px]">
+            {caught ? <><span className="font-black" style={{ color: t.color }}>{t.name}</span> · {t.blurb}</> : "No catch, no digging this round."}
+          </p>
+        </div>
+        {caught && <span className="outlined shrink-0 whitespace-nowrap text-[26px] leading-none text-gold sm:text-[34px]">+{tierMeters(tier).toLocaleString()} m</span>}
+      </div>
+      {caught?.corrected && <p className="mt-2 text-sm font-semibold text-muted">Read “{caught.raw}” as {caught.pokemon.name}.</p>}
+      <div className="mt-4 flex justify-end">
+        <button autoFocus onClick={(e) => { e.stopPropagation(); onNext(); }} className="tile t-green stripes rise px-6 py-3">
+          <span className="font-display text-xl font-black">{last ? "See your team" : "Next encounter"}</span>
+          <span className="keycap">Enter</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Number that counts up instead of jumping.
+function Counter({ value, format = (n: number) => String(n) }: { value: number; format?: (n: number) => string }) {
   const [shown, setShown] = useState(value);
   useEffect(() => {
     if (shown === value) return;
@@ -499,7 +470,7 @@ function Counter({ value }: { value: number }) {
     const t = setTimeout(() => setShown((s) => (s < value ? Math.min(value, s + step) : Math.max(value, s - step))), 30);
     return () => clearTimeout(t);
   }, [shown, value]);
-  return <>{shown}</>;
+  return <>{format(shown)}</>;
 }
 
 /* ═══════════════════════════ Results ═══════════════════════════ */
@@ -513,20 +484,13 @@ function Results({ runId, onTitle, onPractice }: {
   const [starting, setStarting] = useState(false);
   const [opened, setOpened] = useState(0); // team members sent out so far
   const width = useWidth();
-  const [vh, setVh] = useState(800);
+  const height = useHeight();
 
   useEffect(() => {
     api<ResultsPayload>(`/api/results?runId=${encodeURIComponent(runId)}`)
       .then((d) => { setData(d); sfx.fanfare(); })
       .catch((e) => setError(e.message));
   }, [runId]);
-
-  useEffect(() => {
-    const measure = () => setVh(window.innerHeight);
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
 
   // Send your team out one ball at a time.
   useEffect(() => {
@@ -541,16 +505,16 @@ function Results({ runId, onTitle, onPractice }: {
     return () => clearInterval(id);
   }, [data]);
 
+  const meters = metersFor(data?.score ?? 0);
+  const reached = stratumAt(meters);
+  const si = stratumIndexAt(meters);
   const maxBucket = Math.max(1, ...(data?.stats?.buckets ?? [1]));
-  const meters = (data?.score ?? 0) * 10;
-  const reached = biomeAt(meters);
-  const bi = biomeIndexAt(meters);
-  const S = width < 640 ? 2 : 3;
 
   const world = (
-    <div className="fixed inset-0">
-      <Backdrop meters={meters} groundTop={vh * 0.42} width={width} height={vh} scale={S} drift={meters * 1.5} />
-      <div className="absolute inset-0 bg-gradient-to-b from-navy/30 via-transparent to-navy/80" />
+    <div className="fixed inset-0 bg-navy">
+      {/* the stadium you finished in */}
+      <StadiumBg D={meters} w={width} h={height} className="absolute inset-0" />
+      <div className="absolute inset-0 bg-gradient-to-b from-navy/50 via-navy/20 to-navy/90" />
     </div>
   );
   if (error) return <>{world}<div className="relative z-10 mx-auto max-w-lg px-4 pt-28"><div className="panel p-5 font-bold text-coral">{error}</div></div></>;
@@ -558,6 +522,7 @@ function Results({ runId, onTitle, onPractice }: {
 
   const best = data.rounds.map((r) => r.yours).filter((y): y is NonNullable<typeof y> => !!y?.pokemon)
     .sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))[0];
+  const segments = data.rounds.filter((r) => r.yours?.pokemon).map((r) => ({ meters: tierMeters(r.yours!.tier), color: TIERS[r.yours!.tier].color }));
 
   return (
     <>
@@ -567,7 +532,7 @@ function Results({ runId, onTitle, onPractice }: {
           <p className="text-[12px] font-black uppercase tracking-[0.25em] text-gold">Field report · {data.label}</p>
           <h1 className="outlined text-[44px] leading-tight text-white sm:text-[56px]">Your team</h1>
           <p className="font-display text-lg font-black text-white/85 [text-shadow:0_2px_0_rgba(20,26,51,.8)]">
-            Reached {reached.name} · {meters.toLocaleString()} m into the wild
+            Dug down to {reached.name} · {formatMeters(meters)} deep
           </p>
         </div>
 
@@ -579,7 +544,7 @@ function Results({ runId, onTitle, onPractice }: {
             return (
               <div key={i} className="flex flex-col items-center">
                 <div className="relative flex h-[150px] w-full items-end justify-center sm:h-[170px]">
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2"><PixelArt art={padArt(bi)} scale={2} /></div>
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2"><PixelArt art={padArt(si, meters === 0)} scale={2} /></div>
                   {out ? (
                     r.yours?.pokemon ? (
                       <div className="sendout relative mb-5">
@@ -598,7 +563,7 @@ function Results({ runId, onTitle, onPractice }: {
                   <p className="font-display text-[15px] font-black leading-tight">{r.yours?.pokemon?.name ?? "Got away"}</p>
                   <div className="mt-1 flex items-center gap-1">
                     {r.yours?.pokemon && <BallIcon ball={BALL_FOR_TIER[tier]} size={22} />}
-                    <span className="text-[12px] font-black" style={{ color: tier === "miss" ? "#a7afd1" : TIERS[tier].color }}>{TIERS[tier].name} · +{r.yours?.score ?? 0}</span>
+                    <span className="text-[12px] font-black" style={{ color: tier === "miss" ? "#a7afd1" : TIERS[tier].color }}>{tier === "miss" ? "No catch" : `${TIERS[tier].name} · +${tierMeters(tier).toLocaleString()} m`}</span>
                   </div>
                 </div>
               </div>
@@ -608,10 +573,10 @@ function Results({ runId, onTitle, onPractice }: {
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="panel rise flex flex-col p-5 sm:p-6">
-            <p className="text-[12px] font-black uppercase tracking-[0.2em] text-gold">Score</p>
-            <div className="mt-2 flex items-end gap-2">
-              <span className="outlined text-[72px] leading-[.9] text-white"><Counter value={data.score} /></span>
-              <span className="mb-2 font-display text-2xl font-black text-muted">/ {data.maxScore}</span>
+            <p className="text-[12px] font-black uppercase tracking-[0.2em] text-gold">Depth</p>
+            <div className="mt-2 flex flex-wrap items-end gap-x-2">
+              <span className="outlined text-[64px] leading-[.9] text-white sm:text-[72px]"><Counter value={meters} format={(n) => n.toLocaleString()} /><span className="text-[40px]"> m</span></span>
+              <span className="mb-2 font-display text-xl font-black text-muted">/ {metersFor(data.maxScore).toLocaleString()} m</span>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="chip h-8 px-4 text-[15px]" style={{ background: TIER_GRADIENT.shiny, color: "#3a2400" }}>🏆 {data.title.name}</span>
@@ -625,11 +590,11 @@ function Results({ runId, onTitle, onPractice }: {
               ))}
             </div>
             {best?.pokemon && (
-              <p className="mt-4 font-bold text-muted">Best catch: <span className="font-black text-white">{best.pokemon.name}</span> <span style={{ color: TIERS[best.tier].color }}>({TIERS[best.tier].name})</span></p>
+              <p className="mt-4 font-bold text-muted">Deepest catch: <span className="font-black text-white">{best.pokemon.name}</span> <span style={{ color: TIERS[best.tier].color }}>({TIERS[best.tier].name}, +{tierMeters(best.tier).toLocaleString()} m)</span></p>
             )}
             <div className="mt-auto grid grid-cols-3 gap-2 pt-5">
               <button className="tile t-gold stripes justify-center px-2 py-3" onClick={async () => {
-                await navigator.clipboard.writeText(`${data.share}\n📍 ${reached.name} · ${meters.toLocaleString()} m`); setCopied(true); sfx.select(); setTimeout(() => setCopied(false), 1500);
+                await navigator.clipboard.writeText(`${data.share}\n📍 ${reached.name}`); setCopied(true); sfx.select(); setTimeout(() => setCopied(false), 1500);
               }}><span className="font-display text-lg font-black">{copied ? "Copied!" : "Share"}</span></button>
               <button className="tile t-blue stripes justify-center px-2 py-3" disabled={starting} onClick={async () => {
                 setStarting(true); sfx.select();
@@ -643,20 +608,20 @@ function Results({ runId, onTitle, onPractice }: {
 
           <div className="panel rise flex flex-col p-5 sm:p-6" style={{ animationDelay: "80ms" }}>
             <p className="text-[12px] font-black uppercase tracking-[0.2em] text-gold">Expedition</p>
-            <p className="mt-2 text-sm font-extrabold text-muted">You made it to</p>
+            <p className="mt-2 text-sm font-extrabold text-muted">You dug down to</p>
             <p className="outlined text-[40px] leading-tight text-white">{reached.name}</p>
-            <p className="font-display text-xl font-black text-gold">{meters.toLocaleString()} m into the wild</p>
-            <div className="mt-4"><JourneyMap meters={meters} /></div>
+            <p className="font-display text-lg font-black text-white/70">{reached.flavor}</p>
+            <div className="mt-4"><JourneyMap meters={meters} segments={segments} /></div>
             {data.stats && (
               <div className="mt-5">
                 <p className="font-bold">
                   {data.stats.betterThan === null
-                    ? "You're one of the first trainers out today!"
+                    ? "You're one of the first trainers down today!"
                     : <>Deeper than <span className="text-gold">{data.stats.betterThan}%</span> of today&apos;s {data.stats.players.toLocaleString()} trainers</>}
                 </p>
                 <div className="mt-2 flex h-14 items-end gap-1">
                   {data.stats.buckets.map((n, b) => (
-                    <div key={b} className="flex-1 rounded-t-md" title={`${b * 500}–${b * 500 + 499} m: ${n}`}
+                    <div key={b} className="flex-1 rounded-t-md" title={`${(b * 500).toLocaleString()}–${(b * 500 + 499).toLocaleString()} m: ${n}`}
                       style={{
                         height: `${Math.max(8, (n / maxBucket) * 100)}%`,
                         background: b === data.stats!.yourBucket ? "linear-gradient(180deg,#ffe066,#f2a516)" : n ? "#56609a" : "#2a3260",
@@ -689,7 +654,7 @@ function Results({ runId, onTitle, onPractice }: {
                     <div>
                       <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: labelColor }}>
                         {r.yours?.pokemon && <BallIcon ball={BALL_FOR_TIER[tier]} size={18} />}
-                        {TIERS[tier].name} · +{r.yours?.score ?? 0}
+                        {tier === "miss" ? TIERS[tier].name : `${TIERS[tier].name} · +${tierMeters(tier).toLocaleString()} m`}
                       </p>
                       <p className="font-display text-xl font-black leading-tight">{r.yours?.pokemon?.name ?? "Got away"}</p>
                     </div>

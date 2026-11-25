@@ -2,7 +2,6 @@
 // in the palette; "." is transparent.
 import type { CSSProperties } from "react";
 import { TIERS, type TierId } from "@/lib/game";
-import { BALL_FOR_TIER, BallIcon } from "./sprites";
 
 type Art = { grid: string[]; palette: Record<string, string> };
 
@@ -150,16 +149,6 @@ export const TIER_GRADIENT: Record<TierId, string> = {
   shiny: "linear-gradient(180deg, #ffe066, #f2a516)",
   miss: "linear-gradient(180deg, #4a5480, #2b3360)",
 };
-
-export function TierChip({ tier, points = true }: { tier: TierId; points?: boolean }) {
-  const t = TIERS[tier];
-  return (
-    <span className="chip h-8 gap-1.5 pl-1 pr-3 text-[13px]" style={{ background: TIER_GRADIENT[tier], color: tier === "shiny" ? "#3a2400" : "#fff" }}>
-      {tier === "miss" ? <TierIcon tier="miss" scale={2} /> : <BallIcon ball={BALL_FOR_TIER[tier]} size={26} />}
-      {t.name}{points && <span className="opacity-80">· {t.score}</span>}
-    </span>
-  );
-}
 
 const TYPE_COLORS: Record<string, string> = {
   normal: "#9fa19f", fire: "#e62829", water: "#2980ef", grass: "#3fa129", electric: "#e0ad00",

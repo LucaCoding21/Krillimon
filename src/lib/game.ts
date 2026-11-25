@@ -13,10 +13,14 @@ export type PuzzleAnswer = { id: number; tier: TierId };
 export type PuzzlePrompt = { id: string; kind: string; text: string; answers: PuzzleAnswer[] };
 
 export const ROUNDS = 6;          // a full team
-export const PREVIEW_MS = 3_000;  // read the prompt before the clock starts
+export const PREVIEW_MS = 0;      // the clock starts the moment the prompt shows; you can type right away
 export const ROUND_MS = 25_000;   // time to answer
 export const GRACE_MS = 1_500;    // network slack for the last-second submit
 export const MAX_SCORE = ROUNDS * 100;
+// Points are shown as depth: every point digs you 10 m deeper.
+export const METERS_PER_POINT = 10;
+export const metersFor = (score: number) => score * METERS_PER_POINT;
+export const formatMeters = (m: number) => `${Math.round(m).toLocaleString('en-US')} m`;
 
 export const TIERS: Record<TierId, { name: string; score: number; emoji: string; blurb: string; color: string }> = {
   common:   { name: 'Common',     score: 10,  emoji: '🌱', blurb: "Everyone's first thought.",            color: '#94a3b8' },
@@ -149,5 +153,5 @@ export function generatePuzzle(dex: Pokemon[], seed: string, candidates = buildC
 }
 
 export function shareText(label: string, score: number, tiers: TierId[]) {
-  return `Tall Grass ${label}\n${score}/${MAX_SCORE} · ${titleFor(score).name}\n${tiers.map(t => TIERS[t].emoji).join('')}`;
+  return `Tall Grass ${label}\n⛏️ ${formatMeters(metersFor(score))} deep · ${titleFor(score).name}\n${tiers.map(t => TIERS[t].emoji).join('')}`;
 }
