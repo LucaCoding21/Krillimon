@@ -22,6 +22,7 @@ export const STRATUM_COLORS = ["#4fa85c", "#93603a", "#5f9a3e", "#4fc8f0", "#6c6
 
 export type Geo = {
   w: number; h: number; narrow: boolean; title: boolean;
+  avail: number;      // px between the HUD and the floor's front edge
   S: number;          // pixel-art scale
   anchorY: number;    // screen y of the front edge of the floor you stand on
   T: number;          // how deep the floor looks (px above its front edge)
@@ -44,7 +45,7 @@ export function geometry(w: number, h: number, opts: { bottom?: number; top?: nu
   // Each floor is a stadium room that fills the screen above it while you play.
   const roomH = anchorY + 8;
   return {
-    w, h, narrow, title, S, anchorY, T, roomH, F,
+    w, h, narrow, title, avail, S, anchorY, T, roomH, F,
     // A Common catch (100 m) must always fall clear of the room you were standing in.
     PX: Math.max(3.2, (roomH + F + 40) / 100),
     side: 20 * (narrow ? 1.6 : S),
@@ -270,15 +271,31 @@ export function stadiumFor(D: number) {
   return { src: `/stadium/${list[k]}.png`, grade: STRATA[i].grade, i };
 }
 
-/** A battle background, scaled to cover the box with its ground at the bottom. */
-export function StadiumBg({ D, w, h, className, style }: { D: number; w: number; h: number; className?: string; style?: CSSProperties }) {
+/**
+ * A battle background with its ground at the bottom. Like a Showdown battle it shows most
+ * of the scene (sky or cave roof down to the ground) instead of zooming in until it covers a
+ * wide screen; any extra width is filled with mirrored copies, which meet without a seam.
+ */
+export function StadiumBg({ D, w, h, visible = h, className, style }: {
+  D: number; w: number; h: number; visible?: number; className?: string; style?: CSSProperties;
+}) {
   const st = stadiumFor(D);
-  const s = Math.max(w / STADIUM_W, h / STADIUM_H);
+  // About 92% of the picture's height fits in the `visible` part of the box (the box may run
+  // a little past the top of the screen); on tall, narrow screens it covers the height instead.
+  const s = Math.max(h / STADIUM_H, Math.min(w / STADIUM_W, visible / (STADIUM_H * 0.92)));
+  const iw = Math.ceil(STADIUM_W * s), ih = Math.ceil(STADIUM_H * s);
+  const left = Math.round((w - iw) / 2);
+  const n = left > 0 ? Math.ceil(left / iw) : 0;
   return (
-    <div className={className} style={{
-      backgroundImage: `url(${st.src})`, backgroundSize: `${STADIUM_W * s}px ${STADIUM_H * s}px`, backgroundPosition: "center bottom",
-      backgroundRepeat: "no-repeat", imageRendering: "pixelated", filter: st.grade || undefined, ...style,
-    }} />
+    <div className={`overflow-hidden ${className ?? ""}`} style={{ filter: st.grade || undefined, ...style }}>
+      {Array.from({ length: n * 2 + 1 }, (_, j) => j - n).map((k) => (
+        <div key={k} className="absolute bottom-0" style={{
+          left: left + k * iw, width: iw + 1, height: ih,
+          backgroundImage: `url(${st.src})`, backgroundSize: "100% 100%", imageRendering: "pixelated",
+          transform: k % 2 ? "scaleX(-1)" : undefined,
+        }} />
+      ))}
+    </div>
   );
 }
 

@@ -22,7 +22,7 @@ export function BiomePreview() {
   return (
     <div className="fixed inset-0">
       <Scene floor={floor} partner={{ id: 25, name: "Pikachu", types: ["electric"] }} outcome={drop.outcome} roundKey={drop.key}
-        bottom={120} top={110} hud onSettled={() => {}} />
+        bottom={250} top={112} hud onSettled={() => {}} />
       <div className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center gap-2 bg-navy/90 p-3 text-sm font-bold">
         <select className="rounded bg-panel-2 px-2 py-1" value={depth} onChange={(e) => {
           const m = Number(e.target.value); setDepth(m); setFloor(m); setDrop((d) => ({ key: d.key + 1, outcome: null }));

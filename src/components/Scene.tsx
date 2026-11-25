@@ -70,10 +70,12 @@ function layoutOf(g: Geo) {
   const padE = { w: 64 * S, h: 20 * S }, padP = { w: 64 * (S + 1), h: 20 * (S + 1) };
   const enemyFeet = g.enemy.y + padE.h * 0.1, playerFeet = g.player.y + padP.h * 0.1;
   const bs = g.narrow ? 46 : 68; // ball size (the item art has padding)
+  const fit = Math.max(0.72, Math.min(1, g.avail / 470));
   return {
     S, padE, padP, enemyFeet, playerFeet, bs,
     fall: Math.round(bs * 1.2), // the ball is a little bigger while it falls
-    enemyScale: g.narrow ? 1.7 : 2.3, playerScale: g.narrow ? 2.1 : 2.9,
+    // on short screens the Pokémon shrink a little, so they stay in proportion with the stadium
+    enemyScale: (g.narrow ? 1.7 : 2.3) * fit, playerScale: (g.narrow ? 2.1 : 2.9) * fit,
     throwFrom: { x: g.player.x + (g.narrow ? 26 : 44), y: playerFeet + (g.narrow ? 120 : 190) },
     impact: { x: g.enemy.x, y: enemyFeet + (g.narrow ? 70 : 100) },
     rest: { x: g.enemy.x, y: enemyFeet - 4 },
@@ -138,7 +140,7 @@ function Room({ D, geo, fade, reveal }: { D: number; geo: Geo; fade: boolean; re
   return (
     <div className={`absolute inset-x-0 transition-opacity duration-700 ${fade ? "opacity-0" : ""}`} style={{ top: D * PX - h, height: h + F }}>
       <div className={`absolute inset-0 ${reveal ? "room-in" : ""}`} style={reveal ? { "--ox": `${reveal.x}px`, "--oy": `${h}px` } as CSSProperties : undefined}>
-        <StadiumBg D={D} w={w} h={h} className="absolute inset-x-0 top-0" style={{ height: h }} />
+        <StadiumBg D={D} w={w} h={h} visible={roomH} className="absolute inset-x-0 top-0" style={{ height: h }} />
         <div className="absolute inset-x-0" style={{ top: h, height: F, backgroundImage: L.crust.url, backgroundSize: `${L.crust.w * S}px ${L.crust.h * S}px`, backgroundRepeat: "repeat-x" }} />
       </div>
     </div>
