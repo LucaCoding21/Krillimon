@@ -6,7 +6,7 @@ import {
   generatePuzzle, shareText, titleFor, GRACE_MS, MAX_SCORE, PREVIEW_MS, ROUND_MS, ROUNDS, TIERS,
   type PuzzlePrompt, type TierId,
 } from '../game';
-import { matchPokemon } from '../match';
+import { matchPokemon, suggestPokemon } from '../match';
 import type { GuessResult, PokeRef, ResultsPayload, RoundResult, RunState } from '../api-types';
 
 const LAUNCH_DATE = '2026-11-24';
@@ -148,17 +148,22 @@ export async function submitGuess(runId: string, player: string, rawInput: unkno
   }
   if (!text) return { status: 'rejected', reason: 'Type a Pokémon first.' };
 
-  const match = matchPokemon(text, NAME_INDEX);
-  if (!match) return { status: 'rejected', reason: `“${text}” isn't a Pokémon we know.` };
-  const hit = match.ids.map(id => prompt.answers.find(a => a.id === id)).find(Boolean);
-  if (!hit) return { status: 'rejected', reason: `${BY_ID.get(match.ids[0])?.name} doesn't fit this one.` };
+  const ids = matchPokemon(text, NAME_INDEX);
+  if (!ids) {
+    // Not an exact name: ask "Did you mean…?" instead of guessing for the player.
+    const close = suggestPokemon(text, NAME_INDEX);
+    if (!close.length) return { status: 'rejected', reason: `“${text}” isn't a Pokémon we know.` };
+    return { status: 'suggest', typed: text, options: close.map(pokeRef) };
+  }
+  const hit = ids.map(id => prompt.answers.find(a => a.id === id)).find(Boolean);
+  if (!hit) return { status: 'rejected', reason: `${BY_ID.get(ids[0])?.name} doesn't fit this one.` };
 
   if (!(await record(run, text, hit.id, hit.tier))) {
     return { status: 'timeout', state: await stateFor(runId, player) };
   }
   return {
     status: 'accepted', tier: hit.tier, score: TIERS[hit.tier].score, pokemon: pokeRef(hit.id),
-    corrected: match.corrected, state: await stateFor(runId, player),
+    state: await stateFor(runId, player),
   };
 }
 

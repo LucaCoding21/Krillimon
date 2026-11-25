@@ -57,9 +57,14 @@ const isStarter = id => STARTER_RANGES.some(([a, b]) => id >= a && id <= b);
 await mkdir(cacheDir, { recursive: true });
 await mkdir(path.dirname(outFile), { recursive: true });
 
-const [species, names, pokemon, pokemonTypes, types, colors] = await Promise.all([
+const [
+  species, names, pokemon, pokemonTypes, types, colors,
+  pokemonAbilities, abilityNames, pokemonEggs, eggNames, pokemonStats, evolutions, items, shapes,
+] = await Promise.all([
   csv('pokemon_species'), csv('pokemon_species_names'), csv('pokemon'),
   csv('pokemon_types'), csv('types'), csv('pokemon_colors'),
+  csv('pokemon_abilities'), csv('ability_names'), csv('pokemon_egg_groups'), csv('egg_group_prose'),
+  csv('pokemon_stats'), csv('pokemon_evolution'), csv('items'), csv('pokemon_shapes'),
 ]);
 
 const typeName = Object.fromEntries(types.map(t => [t.id, t.identifier]));
@@ -68,6 +73,44 @@ const displayName = Object.fromEntries(names.filter(n => n.local_language_id ===
 const defaultForm = Object.fromEntries(pokemon.filter(p => p.is_default === '1').map(p => [p.species_id, p]));
 const typesByPokemon = {};
 for (const t of pokemonTypes) (typesByPokemon[t.pokemon_id] ??= []).push(t);
+
+// Abilities (hidden ones included: "can have"), egg groups and base stats.
+const abilityName = Object.fromEntries(abilityNames.filter(n => n.local_language_id === ENGLISH).map(n => [n.ability_id, n.name]));
+const abilitiesByPokemon = {};
+for (const a of pokemonAbilities.sort((x, y) => x.slot - y.slot)) {
+  const name = abilityName[a.ability_id];
+  const list = (abilitiesByPokemon[a.pokemon_id] ??= []);
+  if (name && !list.includes(name)) list.push(name);
+}
+const eggName = Object.fromEntries(eggNames.filter(n => n.local_language_id === ENGLISH).map(n => [n.egg_group_id, n.name]));
+const eggsBySpecies = {};
+for (const e of pokemonEggs) (eggsBySpecies[e.species_id] ??= []).push(eggName[e.egg_group_id]);
+const statsByPokemon = {};
+for (const st of pokemonStats) (statsByPokemon[st.pokemon_id] ??= [0, 0, 0, 0, 0, 0])[Number(st.stat_id) - 1] = Number(st.base_stat);
+const shapeName = Object.fromEntries(shapes.map(x => [x.id, x.identifier]));
+const genus = Object.fromEntries(names.filter(n => n.local_language_id === ENGLISH).map(n => [n.pokemon_species_id, n.genus.replace(/\s*Pokémon$/, '')]));
+
+// How each species is reached by evolving: 'level', 'trade', 'friendship', an item (e.g. 'fire-stone'), or 'other'.
+const itemName = Object.fromEntries(items.map(i => [i.id, i.identifier]));
+const evoBySpecies = {};
+for (const e of evolutions) {
+  const tags = (evoBySpecies[e.evolved_species_id] ??= new Set());
+  if (e.evolution_trigger_id === '2') tags.add('trade');
+  else if (e.evolution_trigger_id === '3' && itemName[e.trigger_item_id]) tags.add(itemName[e.trigger_item_id]);
+  else if (e.evolution_trigger_id === '1' && e.minimum_happiness) tags.add('friendship');
+  else if (e.evolution_trigger_id === '1') tags.add('level');
+  else tags.add('other');
+}
+
+// Alternate forms: Mega Evolutions, Gigantamax and regional variants.
+const FORM_TAGS = { mega: /-mega(-[xyz])?$/, gmax: /-gmax$/, alola: /-alola(-|$)/, galar: /-galar(-|$)/, hisui: /-hisui(-|$)/, paldea: /-paldea(-|$)/ };
+const formsBySpecies = {};
+for (const p of pokemon.filter(p => p.is_default !== '1')) {
+  for (const [tag, re] of Object.entries(FORM_TAGS)) {
+    const list = (formsBySpecies[p.species_id] ??= []);
+    if (re.test(p.identifier) && !list.includes(tag)) list.push(tag);
+  }
+}
 
 // Evolution-family facts: family size and longest chain.
 const byId = Object.fromEntries(species.map(s => [s.id, s]));
@@ -110,6 +153,14 @@ const out = species.map(s => {
     familyDepth: Math.max(...fam.map(stageOf)),
     fam: familiarity,
     meme: MEME_PICKS.includes(s.identifier),
+    abilities: abilitiesByPokemon[form?.id] ?? [],
+    eggs: (eggsBySpecies[s.id] ?? []).filter(Boolean),
+    stats: statsByPokemon[form?.id] ?? null, // hp, atk, def, spa, spd, spe
+    gender: Number(s.gender_rate), // -1 genderless, 0 always male, 8 always female
+    shape: shapeName[s.shape_id] ?? null,
+    genus: genus[s.id] ?? null,
+    evo: [...(evoBySpecies[s.id] ?? [])],
+    forms: formsBySpecies[s.id] ?? [],
   };
 }).sort((a, b) => a.id - b.id);
 

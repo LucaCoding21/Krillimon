@@ -97,6 +97,8 @@ export const sfx = {
   burst: () => { noise(0.16, { from: 700, to: 2600, vol: 0.06 }); tone(170, 0.12, { type: "triangle", vol: 0.05, slide: 95 }); },
   // The ball drops through the floor.
   hole: () => { noise(0.3, { from: 900, to: 160, vol: 0.07 }); tone(240, 0.22, { type: "triangle", vol: 0.05, slide: 70 }); },
+  // "Hm?" for a "Did you mean…?" suggestion.
+  hmm: () => { tone(587, 0.07, { type: "triangle", vol: 0.045 }); tone(880, 0.12, { type: "triangle", vol: 0.045, at: 0.08 }); },
   recall: () => tone(980, 0.26, { type: "triangle", vol: 0.03, slide: 300 }),
   // Smashing through a ledge: each one rings a step higher.
   crack: (i: number) => {

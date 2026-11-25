@@ -104,6 +104,23 @@ img.sprite, canvas.sprite, svg.px { image-rendering: pixelated; shape-rendering:
   font: 800 11px var(--font-body); letter-spacing: .02em;
 }
 
+/* "Did you mean…?" options under the answer box. */
+.suggest {
+  display: inline-flex; flex: none; align-items: center; gap: 6px;
+  height: 36px; padding: 0 11px 0 2px; border-radius: 999px;
+  background: rgba(255, 255, 255, .1); border: 1px solid var(--line); color: #fff;
+  font-weight: 900; font-size: 15px; white-space: nowrap;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .22);
+  transition: transform .08s ease, background .15s, filter .15s;
+}
+.suggest:hover:not(:disabled) { background: rgba(255, 255, 255, .18); transform: translateY(-1px); }
+.suggest:active:not(:disabled) { transform: translateY(2px); }
+.suggest.main { background: linear-gradient(180deg, #ffd65a, #f2a516); color: #3a2400; border-color: transparent; }
+.suggest.main:hover:not(:disabled) { background: linear-gradient(180deg, #ffd65a, #f2a516); filter: brightness(1.06); }
+.suggest .keycap { min-width: 0; height: 20px; padding: 0 6px; font-size: 10px; background: rgba(58, 36, 0, .18); color: #3a2400; box-shadow: none; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
   height: 22px; padding: 0 9px; border-radius: 999px;

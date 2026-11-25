@@ -8,7 +8,7 @@ import { TIER_GRADIENT, TierIcon, TimerBar, PixelArt } from "./pixel";
 import { Scene, type Mon, type Outcome, type SceneHandle } from "./Scene";
 import { JourneyMap, StadiumBg, stratumAt, stratumIndexAt } from "./World";
 import { padArt } from "./art";
-import { BALLS, BALL_FOR_TIER, BallIcon, Sprite } from "./sprites";
+import { BALLS, BALL_FOR_TIER, BallIcon, MonIcon, Sprite } from "./sprites";
 
 type Screen =
   | { name: "title" }
@@ -188,7 +188,8 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       <div className="panel rise max-h-[92vh] w-full max-w-lg overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-display text-2xl font-black">How to play</h2>
         <p className="mt-2 font-semibold text-muted">
-          Something rustles in the grass and you get a prompt and 25 seconds. Name any Pokémon that fits and it pops out.
+          Something rustles in the grass and you get a prompt and 25 seconds. Name any Pokémon that fits and it pops out
+          (misspell it and we&apos;ll ask what you meant).
           Catch it and it drops down the shaft, smashing through one ledge for every tier it beats.
           The fewer trainers who&apos;d think of it, the deeper it digs, and the better the ball it lands in.
         </p>
@@ -214,7 +215,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
 /* ═══════════════════════════ Play ═══════════════════════════ */
 
 type Feedback =
-  | { kind: "catch"; tier: TierId; pokemon: PokeRef; corrected: boolean; raw: string }
+  | { kind: "catch"; tier: TierId; pokemon: PokeRef; raw: string }
   | { kind: "miss"; raw: string; gaveUp?: boolean };
 
 function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: string) => void }) {
@@ -224,6 +225,7 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
   const [settled, setSettled] = useState(false); // the catch has landed; the result panel is up
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [suggest, setSuggest] = useState<{ typed: string; options: PokeRef[] } | null>(null); // "Did you mean…?"
   const [busy, setBusy] = useState(false);
   const [badKey, setBadKey] = useState(0);
   const [typing, setTyping] = useState(0);
@@ -241,12 +243,13 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
   const narrow = width < 640;
 
   // The scene sits above the docked answer panel, so track its height (while it shows the form).
+  // A "Did you mean…?" row can briefly make the panel taller; the scene holds still for it.
   useLayoutEffect(() => {
-    if (!panelEl || feedback) return;
+    if (!panelEl || feedback || suggest) return;
     const ro = new ResizeObserver(() => setPanelH(panelEl.offsetHeight));
     ro.observe(panelEl);
     return () => ro.disconnect();
-  }, [panelEl, feedback]);
+  }, [panelEl, feedback, suggest]);
 
   const adopt = (s: RunState) => { setOffset(s.serverNow - Date.now()); setState(s); };
 
@@ -279,7 +282,7 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
   // `s` has just arrived, so its server time is fresh: sync the clock offset now (not later, when it's stale).
   function show(fb: Feedback, s: RunState) {
     setOffset(s.serverNow - Date.now());
-    setFeedback(fb); setNextState(s); setSettled(false); setError(null); setStoppedAt(Date.now());
+    setFeedback(fb); setNextState(s); setSettled(false); setError(null); setSuggest(null); setStoppedAt(Date.now());
   }
 
   // Out of time: the round is a miss (unless a last-second guess is still in flight).
@@ -298,21 +301,39 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
 
   const inFlight = feedback?.kind === "catch" && !settled;
 
-  async function submit(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
     if (inFlight) { sceneRef.current?.skip(); return; }
-    if (busy || phase !== "answering" || !answer.trim()) return;
-    setBusy(true); setError(null);
+    // Enter while "Did you mean…?" is up takes the first suggestion.
+    if (suggest) pick(suggest.options[0]);
+    else void guess(answer);
+  }
+
+  function pick(p: PokeRef) {
+    setAnswer(p.name);
+    void guess(p.name);
+  }
+
+  function dismissSuggest() {
+    setSuggest(null);
+    requestAnimationFrame(() => inputEl?.select());
+  }
+
+  async function guess(typed: string) {
+    if (busy || phase !== "answering" || !typed.trim()) return;
+    setBusy(true); setError(null); setSuggest(null);
     sfx.burst();
-    const typed = answer;
     try {
       await startReq.current;
       const r = await api<GuessResult>("/api/guess", { runId: state.runId, answer: typed });
       if (r.status === "rejected") {
         setError(r.reason); setBadKey((k) => k + 1); sfx.wrong();
         requestAnimationFrame(() => inputEl?.select());
+      } else if (r.status === "suggest") {
+        setSuggest({ typed: r.typed, options: r.options }); sfx.hmm();
+        requestAnimationFrame(() => inputEl?.focus());
       } else if (r.status === "accepted") {
-        show({ kind: "catch", tier: r.tier, pokemon: r.pokemon, corrected: r.corrected, raw: typed }, r.state);
+        show({ kind: "catch", tier: r.tier, pokemon: r.pokemon, raw: typed }, r.state);
       } else {
         show({ kind: "miss", raw: typed }, r.state);
       }
@@ -339,7 +360,7 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
     sfx.select();
     if (nextState.completed) { onFinished(nextState.runId); return; }
     setState(nextState); setFeedback(null); setNextState(null); setSettled(false);
-    setAnswer(""); setError(null); setShownAt(Date.now()); setStoppedAt(null);
+    setAnswer(""); setError(null); setSuggest(null); setShownAt(Date.now()); setStoppedAt(null);
   }
 
   const onSettled = useCallback(() => setSettled(true), []);
@@ -402,7 +423,8 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
                 <input
                   ref={setInputEl}
                   value={answer}
-                  onChange={(e) => { setAnswer(e.target.value); setTyping((t) => t + 1); if (error) setError(null); }}
+                  onChange={(e) => { setAnswer(e.target.value); setTyping((t) => t + 1); if (error) setError(null); if (suggest) setSuggest(null); }}
+                  onKeyDown={(e) => { if (e.key === "Escape" && suggest) { e.preventDefault(); dismissSuggest(); } }}
                   readOnly={phase !== "answering" || busy}
                   placeholder="Name a Pokémon…"
                   autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={40} enterKeyHint="send"
@@ -413,10 +435,30 @@ function Play({ initial, onFinished }: { initial: RunState; onFinished: (runId: 
                   <span className="hidden font-display text-xl font-black min-[400px]:inline">Throw!</span>
                 </button>
               </div>
-              <div className="mt-2 flex min-h-7 items-end justify-between gap-3">
-                <p className="font-bold leading-tight text-coral">{error}</p>
-                {phase === "answering" && !busy && (
-                  <button type="button" onClick={giveUp} className="shrink-0 text-sm font-extrabold text-muted hover:text-white">Run away →</button>
+              <div className="mt-2 flex min-h-9 items-center justify-between gap-3">
+                {suggest && phase === "answering" ? (
+                  <div key={suggest.typed} className="rise flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <span className="font-bold text-muted">Did you mean</span>
+                    {suggest.options.map((p, i) => (
+                      <button key={p.id} type="button" onClick={() => pick(p)} disabled={busy} className={`suggest ${i === 0 ? "main" : ""}`}>
+                        <MonIcon id={p.id} name={p.name} size={30} />
+                        <span>{p.name}{i === suggest.options.length - 1 ? "?" : ""}</span>
+                        {i === 0 && !narrow && <span className="keycap">Enter</span>}
+                      </button>
+                    ))}
+                    {!busy && (
+                      <button type="button" onClick={dismissSuggest} title="Esc" className="ml-auto px-1 text-sm font-extrabold text-muted hover:text-white">
+                        No
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <p className="font-bold leading-tight text-coral">{error}</p>
+                    {phase === "answering" && !busy && (
+                      <button type="button" onClick={giveUp} className="shrink-0 text-sm font-extrabold text-muted hover:text-white">Run away →</button>
+                    )}
+                  </>
                 )}
               </div>
             </form>
@@ -450,7 +492,6 @@ function ResultView({ feedback, last, onNext }: { feedback: Feedback; last: bool
         </div>
         {caught && <span className="outlined shrink-0 whitespace-nowrap text-[26px] leading-none text-gold sm:text-[34px]">+{tierMeters(tier).toLocaleString()} m</span>}
       </div>
-      {caught?.corrected && <p className="mt-2 text-sm font-semibold text-muted">Read “{caught.raw}” as {caught.pokemon.name}.</p>}
       <div className="mt-4 flex justify-end">
         <button autoFocus onClick={(e) => { e.stopPropagation(); onNext(); }} className="tile t-green stripes rise px-6 py-3">
           <span className="font-display text-xl font-black">{last ? "See your team" : "Next encounter"}</span>

@@ -60,6 +60,19 @@ export function Sprite({ id, name, view = "front", shiny = false, scale = 2, cla
   );
 }
 
+/** A small static portrait, cropped in on the Pokémon (for chips and lists). */
+export function MonIcon({ id, name, size = 34 }: { id: number; name: string; size?: number }) {
+  const urls = [`${SD}/gen5/${showdownId(name)}.png`, `${PA}/pokemon/${id}.png`];
+  const [index, setIndex] = useState(0);
+  return (
+    <span className="grid shrink-0 place-items-center overflow-hidden rounded-full bg-black/15" style={{ width: size, height: size }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={urls[index]} alt="" draggable={false} onError={() => setIndex((i) => Math.min(i + 1, urls.length - 1))}
+        className="max-w-none select-none [image-rendering:pixelated]" style={{ width: size * 1.75, height: size * 1.75 }} />
+    </span>
+  );
+}
+
 /* ───────────────────────── Poké Balls ───────────────────────── */
 
 export type BallId = "poke-ball" | "premier-ball" | "great-ball" | "ultra-ball" | "luxury-ball" | "master-ball";

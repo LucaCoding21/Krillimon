@@ -23,7 +23,7 @@ First-time database setup:
 2. `npm run data` downloads PokéAPI's CSVs and builds `src/data/pokemon.json` (already committed).
 3. `npm run seed` copies the Pokémon into the `pokemon` table.
 
-`npm test` checks the answer matcher and the puzzle generator.
+`npm test` checks the name matcher, the suggestions and the puzzle generator.
 
 ## Scoring
 
@@ -45,6 +45,38 @@ Rarity comes from one **familiarity** number per Pokémon (1–100) in
 `scripts/familiarity.mjs`: hand-set for well-known Pokémon, a per-generation default
 for the rest. Edit it, then `npm run data && npm run seed`. New puzzles pick up the
 change; puzzles already played keep their frozen tiers.
+
+## Prompts
+
+About 500 prompts across 28 kinds, all generated from the PokéAPI data in
+`buildCandidates()` (`src/lib/game.ts`). Each puzzle uses six different kinds, so two days
+rarely look alike:
+
+- **Types**: type, pure type, dual type, type + region, 4× weakness ("4× weak to Ice")
+- **Generations**: first discovered in a region
+- **Abilities**: "can have the ability Levitate" (hidden abilities count), ~130 of them
+- **Base stats**: Speed 100+, Attack 120+, HP 100+, base stat total 600+, slow, weak…
+- **Evolution**: part of a Fire/Water/Thunder/… Stone, trade or friendship evolution
+  (either side counts), branched evolutions, middle and final stages, can still evolve,
+  three-stage families, doesn't evolve, babies
+- **Groups**: starters (any, first stage, by type, finals), fossils, pseudo-legendaries,
+  Ultra Beasts, Paradox, Eeveelutions, Legendary, Mythical
+- **Forms**: has a Mega, can Gigantamax, Alolan / Galarian / Hisuian / any regional form
+- **Pokédex facts**: colour, body shape, egg group, gender (genderless, always male/female),
+  height and weight, a word in its category ("the Mouse Pokémon")
+- **Names**: starts with, ends with, contains J/Q/V/X/Z, exact length, 11+ letters, double
+  letters, same first and last letter, spaces or punctuation
+
+`npm run data` rebuilds `src/data/pokemon.json`, including abilities, stats, egg groups,
+evolution methods and forms.
+
+## Answering
+
+Exact names are forgiving about case, spaces, punctuation and accents ("mr mime",
+"flabebe", "type null"). Anything else gets a **"Did you mean…?"** row with up to three
+close names (typos, swapped letters, unfinished names like "char"). Enter takes the first,
+or tap another, or press Esc / keep typing to ignore them. Suggestions only look at the
+spelling, never at the prompt, so they don't give away answers. The clock keeps running.
 
 ## The dig (the payoff)
 

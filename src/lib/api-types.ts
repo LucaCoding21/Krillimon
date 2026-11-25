@@ -25,8 +25,9 @@ export type RunState = {
 };
 
 export type GuessResult =
-  | { status: 'accepted'; tier: TierId; score: number; pokemon: PokeRef; corrected: boolean; state: RunState }
+  | { status: 'accepted'; tier: TierId; score: number; pokemon: PokeRef; state: RunState }
   | { status: 'rejected'; reason: string }
+  | { status: 'suggest'; typed: string; options: PokeRef[] } // not an exact name: "Did you mean…?"
   | { status: 'timeout'; state: RunState };
 
 export type ResultsRound = {
