@@ -128,23 +128,18 @@ function GrassPatch({ i, S, mode, clumpRefs, leafRef }: {
 
 /* ───────────────────────── a floor ───────────────────────── */
 
-// The stadium room behind a floor (drawn behind the shaft walls).
+// The stadium a floor sits in. While you play it fills the whole screen, top to bottom,
+// like a Showdown battle; only its floor's cut face shows the rock it was dug into.
+const ROOM_OVERHANG = 60; // px of background above the screen's top edge, so shakes never show a seam
 function Room({ D, geo, fade, reveal }: { D: number; geo: Geo; fade: boolean; reveal?: { x: number } }) {
   const { PX, roomH, F, S, w } = geo;
   const L = strataLayers(stratumIndexAt(D));
-  const crust: CSSProperties = { backgroundImage: L.crust.url, backgroundSize: `${L.crust.w * S}px ${L.crust.h * S}px`, backgroundRepeat: "repeat-x" };
+  const h = roomH + ROOM_OVERHANG;
   return (
-    <div className={`absolute inset-x-0 transition-opacity duration-700 ${fade ? "opacity-0" : ""}`} style={{ top: D * PX - roomH, height: roomH + F }}>
-      <div className={`absolute inset-0 ${reveal ? "room-in" : ""}`} style={reveal ? { "--ox": `${reveal.x}px`, "--oy": `${roomH}px` } as CSSProperties : undefined}>
-        <StadiumBg D={D} w={w} h={roomH} className="absolute inset-x-0 top-0" style={{ height: roomH }} />
-        {/* underground, a rock ceiling and the floor's cut face make the room read as a pocket in the shaft */}
-        {D > 0 && (
-          <>
-            <div className="absolute inset-x-0 top-0" style={{ height: roomH * 0.22, background: "linear-gradient(rgba(0,0,0,.5), transparent)" }} />
-            <div className="absolute inset-x-0 top-0" style={{ height: F, ...crust, transform: "scaleY(-1)" }} />
-          </>
-        )}
-        <div className="absolute inset-x-0" style={{ top: roomH, height: F, ...crust }} />
+    <div className={`absolute inset-x-0 transition-opacity duration-700 ${fade ? "opacity-0" : ""}`} style={{ top: D * PX - h, height: h + F }}>
+      <div className={`absolute inset-0 ${reveal ? "room-in" : ""}`} style={reveal ? { "--ox": `${reveal.x}px`, "--oy": `${h}px` } as CSSProperties : undefined}>
+        <StadiumBg D={D} w={w} h={h} className="absolute inset-x-0 top-0" style={{ height: h }} />
+        <div className="absolute inset-x-0" style={{ top: h, height: F, backgroundImage: L.crust.url, backgroundSize: `${L.crust.w * S}px ${L.crust.h * S}px`, backgroundRepeat: "repeat-x" }} />
       </div>
     </div>
   );

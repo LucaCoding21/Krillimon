@@ -108,7 +108,7 @@ export function World({ geo, camera, span, rooms, back, under, over, ref }: {
   camera: number;            // metres; moved per frame through ref.setCamera
   span: [number, number];    // depth range (m) worth drawing
   rooms?: number[];          // depths of the floors whose stadium rooms are carved out of the shaft
-  back?: ReactNode;          // world-anchored, behind the shaft walls (the rooms)
+  back?: ReactNode;          // world-anchored stadium rooms, drawn over the shaft walls
   under?: ReactNode;         // world-anchored content drawn under the darkness (floors, ledges)
   over?: ReactNode;          // world-anchored content drawn over it (labels, the falling ball)
   ref?: Ref<WorldHandle>;
@@ -120,6 +120,8 @@ export function World({ geo, camera, span, rooms, back, under, over, ref }: {
   const darkRef = useRef<HTMLDivElement>(null);
   const motesRef = useRef<HTMLDivElement>(null);
   const lastStratum = useRef(-1);
+  const roomsRef = useRef<number[]>([]);
+  useLayoutEffect(() => { roomsRef.current = rooms ?? []; });
   const { w, h, S, PX, T, F, anchorY, side } = geo;
 
   const apply = useCallback((m: number) => {
@@ -144,14 +146,17 @@ export function World({ geo, camera, span, rooms, back, under, over, ref }: {
       el.style.visibility = weights[j] > 0 ? "visible" : "hidden";
       if (weights[j] > 0) el.style.backgroundPositionY = `${y0 * 0.6}px`;
     });
-    if (darkRef.current) darkRef.current.style.opacity = String(darknessAt(c));
+    // The dark belongs to the shaft: it lifts as the camera settles into a stadium.
+    const nearRoom = roomsRef.current.reduce((best, d) => Math.min(best, Math.abs(m - d)), Infinity);
+    const inShaft = Math.min(1, (nearRoom * PX) / (h * 0.5));
+    if (darkRef.current) darkRef.current.style.opacity = String(darknessAt(c) * inShaft);
     if (motesRef.current && lastStratum.current !== i) {
       lastStratum.current = i;
       const glow = STRATA[i].glow;
       motesRef.current.style.opacity = glow && c > 40 ? "1" : "0";
       if (glow) motesRef.current.style.setProperty("--mote", glow);
     }
-  }, [anchorY, PX, F]);
+  }, [anchorY, PX, F, h]);
 
   useImperativeHandle(ref, () => ({ setCamera: apply }), [apply]);
   useLayoutEffect(() => { apply(camera); }, [apply, camera]);
@@ -204,7 +209,6 @@ export function World({ geo, camera, span, rooms, back, under, over, ref }: {
         </div>
 
         {props.map((p) => <Prop key={p.k} p={p} geo={geo} />)}
-        {back}
 
         {/* side walls, one band per layer */}
         {strataShown.map(({ s, i, end }) => {
@@ -219,6 +223,7 @@ export function World({ geo, camera, span, rooms, back, under, over, ref }: {
           );
         })}
         <div className="absolute inset-x-0" style={{ top: 0, height: F, ...tile(crust0) }} />
+        {back}
         {under}
       </div>
 
